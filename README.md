@@ -38,20 +38,20 @@ The model is deliberately simple; the focus of this project is the MLOps around 
 ## How to run
 
 ```bash
-# 1. Environment
+#1.Environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Data (needs a Kaggle API token in KAGGLE_API_TOKEN)
+#2.Data (needs a Kaggle API token in KAGGLE_API_TOKEN)
 kaggle datasets download -d abdallahalidev/plantvillage-dataset -p data/raw
 unzip -q data/raw/plantvillage-dataset.zip "plantvillage dataset/color/*" -d data/raw
 mv "data/raw/plantvillage dataset/color" data/raw/color
 
-# 3. Database (run once)
+#3.Database (run once)
 python src/data/make_dataset.py
 
-# 4. Train and predict from the command line
+#4.Train and predict from the command line
 python -m src.models.training
 python -m src.models.predict path/to/leaf.jpg
 
