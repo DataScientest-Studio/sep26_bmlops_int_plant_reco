@@ -1,6 +1,5 @@
 """Train a baseline model on the images stored in the database."""
 import io
-import sqlite3
 from pathlib import Path
 
 import joblib
@@ -10,7 +9,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 
-DB_PATH = Path("data/plants.db")
 MODEL_PATH = Path("models/model.joblib")
 IMG_SIZE = 32
 SEED = 42
@@ -22,13 +20,18 @@ def preprocess(image_bytes):
     return np.asarray(img, dtype=np.float32).flatten() / 255.0
 
 
+
 def load_data():
-    """Read all images and labels from the database."""
-    conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("SELECT image, label FROM images").fetchall()
-    conn.close()
-    X = np.array([preprocess(image) for image, _ in rows])
-    y = np.array([label for _, label in rows])
+    """Read all images and labels from PostgreSQL in stable order."""
+    from src.data.db import get_connection
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT image, label FROM images ORDER BY id")
+            rows = cur.fetchall()
+
+    X = np.array([preprocess(row["image"]) for row in rows])
+    y = np.array([row["label"] for row in rows])
     return X, y
 
 
