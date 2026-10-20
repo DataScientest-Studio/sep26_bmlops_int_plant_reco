@@ -60,3 +60,19 @@ uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 curl -X POST http://localhost:8000/training
 curl -X POST -F "file=@path/to/leaf.jpg" http://localhost:8000/predict
 ```
+
+## Phase 2 — Microservices (in progress)
+
+The data now lives in PostgreSQL instead of SQLite. Docker Compose runs three services:
+
+| Service | What it does |
+|---|---|
+| `db` | PostgreSQL 17; the data stays in the volume `postgres_data` |
+| `loader` | one-time job: loads 3,800 images (100 per class) into PostgreSQL |
+| `api` | FastAPI on port 8000: `GET /`, `POST /training`, `POST /predict` |
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+curl -X POST http://localhost:8000/training
+```
