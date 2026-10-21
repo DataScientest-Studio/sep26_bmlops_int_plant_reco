@@ -39,6 +39,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data/raw/color:/app/data/raw/color:ro
+      - dvc_data:/app/dvc_data
     depends_on:
       db:
         condition: service_healthy
@@ -77,6 +78,7 @@ services:
       --backend-store-uri postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD:-change-me}@mlflow-db:5432/mlflow
       --artifacts-destination /mlartifacts
       --allowed-hosts "*"
+      --cors-allowed-origins "*"
     ports:
       - "5000:5000"
     volumes:
@@ -106,3 +108,4 @@ volumes:
   mlflow_db_data:
   mlflow_artifacts:
   airflow_home:
+  dvc_data:
