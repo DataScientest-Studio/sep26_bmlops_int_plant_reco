@@ -196,4 +196,4 @@ Not in Git: `data/` (images), `.env`, model files.
 
 - **Adrian**: PostgreSQL migration and the first Docker setup (`db`, `loader`, `api`)
 - **Christoph**: MLflow server, tracking, registry and comparison, ETL, DVC, Airflow, integration
-- **Karim**: the rest
+- **Karim**: phase 3
