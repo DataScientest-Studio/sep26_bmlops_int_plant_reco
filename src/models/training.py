@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 
+from src.data.versioning import DVC_DIR, SNAPSHOT, version_dataset
 from src.models.promote import MODEL_NAME, promote_if_better
 
 IMG_SIZE = 32
@@ -38,7 +39,8 @@ def load_data():
 
 
 def train():
-    """Train, evaluate, log the run in MLflow, register the model and compare it."""
+    """Version the data, train, evaluate, log the run in MLflow, register and compare the model."""
+    data_md5, n_images = version_dataset()
     X, y = load_data()
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=SEED
@@ -62,8 +64,11 @@ def train():
             "seed": SEED,
             "n_train": len(y_train),
             "n_test": len(y_test),
+            "n_images": n_images,
+            "data_md5": data_md5,
         })
         mlflow.log_metrics(metrics)
+        mlflow.log_artifact(str(DVC_DIR / f"{SNAPSHOT}.dvc"))
         model_info = mlflow.sklearn.log_model(
             model, name="model", registered_model_name=MODEL_NAME
         )
@@ -73,6 +78,7 @@ def train():
         **metrics,
         "n_train": len(y_train),
         "n_test": len(y_test),
+        "data_md5": data_md5,
         "run_id": run.info.run_id,
         **comparison,
     }
