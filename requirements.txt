@@ -54,3 +54,4 @@ uvicorn==0.54.0
 webencodings==0.6.1
 
 psycopg[binary]==3.2.9
+mlflow==3.11.1

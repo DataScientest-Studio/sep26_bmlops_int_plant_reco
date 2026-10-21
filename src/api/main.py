@@ -12,10 +12,11 @@ def root():
     return {"status": "ok"}
 
 
+@app.post("/train_evaluate")
 @app.post("/training")
-def training_endpoint():
-    metrics = train()
-    return {"message": "Model trained and saved", "metrics": metrics}
+def train_evaluate_endpoint():
+    """Train a new model, log it in MLflow and compare it with the production model."""
+    return {"message": "Model trained, evaluated and registered in MLflow", "result": train()}
 
 
 @app.post("/predict")
