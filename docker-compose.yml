@@ -42,6 +42,8 @@ services:
         condition: service_healthy
       loader:
         condition: service_completed_successfully
+      mlflow:
+        condition: service_started
     restart: unless-stopped
 
   mlflow-db:
@@ -63,11 +65,14 @@ services:
   mlflow:
     build:
       context: docker/mlflow
+    environment:
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
-      --backend-store-uri postgresql://mlflow:${MLFLOW_DB_PASSWORD:-change-me}@mlflow-db:5432/mlflow
+      --workers 1
+      --backend-store-uri postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD:-change-me}@mlflow-db:5432/mlflow
       --artifacts-destination /mlartifacts
       --allowed-hosts "*"
     ports:
