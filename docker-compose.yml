@@ -86,7 +86,23 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  airflow:
+    image: apache/airflow:3.1.8
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__PARALLELISM: "4"
+    ports:
+      - "8080:8080"
+    volumes:
+      - airflow_home:/opt/airflow
+      - ./airflow/dags:/opt/airflow/dags
+    depends_on:
+      - api
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   mlflow_db_data:
   mlflow_artifacts:
+  airflow_home:
