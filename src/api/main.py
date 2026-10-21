@@ -1,6 +1,7 @@
 """API for the plant recognition model."""
 from fastapi import FastAPI, File, UploadFile
 
+from src.data.etl import run_etl
 from src.models.predict import predict
 from src.models.training import train
 
@@ -10,6 +11,12 @@ app = FastAPI(title="Plant Reco API")
 @app.get("/")
 def root():
     return {"status": "ok"}
+
+
+@app.post("/etl")
+def etl_endpoint(per_class: int = 20):
+    """Add the next batch of new images (per class) to the database."""
+    return run_etl(per_class)
 
 
 @app.post("/train_evaluate")
