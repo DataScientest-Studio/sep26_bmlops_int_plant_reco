@@ -56,3 +56,6 @@ webencodings==0.6.1
 psycopg[binary]==3.2.9
 mlflow==3.11.1
 dvc==3.67.1
+
+prometheus-client>=0.16.0
+prometheus-fastapi-instrumentator>=6.0.0
