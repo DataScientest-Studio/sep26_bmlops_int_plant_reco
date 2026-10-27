@@ -122,6 +122,7 @@ services:
     container_name: grafana
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
     ports:
       - "3000:3000"
     environment:
