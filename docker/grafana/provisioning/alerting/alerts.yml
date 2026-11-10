@@ -97,7 +97,73 @@ groups:
               conditions:
                 - evaluator:
                     type: "outside_range"
-                    params: [0.10, 0.90]
+                    params: [0.20, 0.60]
+        noDataState: "OK"
+        execErrState: "Alerting"
+        for: "1m"
+
+      - uid: "image_brightness"
+        title: "Unusual Image Brightness"
+        condition: "C"
+        data:
+          - refId: "A"
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "Prometheus"
+            model:
+              editorMode: "code"
+              expr: >-
+                sum(rate(image_brightness_sum[5m]))
+                / (sum(rate(image_brightness_count[5m])) > 0)
+              instant: true
+          - refId: "B"
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              type: "reduce"
+              expression: "A"
+              reducer: "last"
+          - refId: "C"
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              type: "threshold"
+              expression: "B"
+              conditions:
+                - evaluator:
+                    type: "outside_range"
+                    params: [80, 150]
+        noDataState: "OK"
+        execErrState: "Alerting"
+        for: "1m"
+
+      - uid: "image_sharpness"
+        title: "Low Image Sharpness"
+        condition: "C"
+        data:
+          - refId: "A"
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "Prometheus"
+            model:
+              editorMode: "code"
+              expr: >-
+                sum(rate(image_sharpness_sum[5m]))
+                / (sum(rate(image_sharpness_count[5m])) > 0)
+              instant: true
+          - refId: "B"
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              type: "reduce"
+              expression: "A"
+              reducer: "last"
+          - refId: "C"
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              type: "threshold"
+              expression: "B"
+              conditions:
+                - evaluator: { type: "lt", params: [5] }
         noDataState: "OK"
         execErrState: "Alerting"
         for: "1m"
