@@ -116,30 +116,31 @@ services:
 
 
   prometheus:
-      image: prom/prometheus:v2.45.0
-      container_name: prometheus
-      volumes:
-        - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-        - prometheus_data:/prometheus
-      command:
-        - '--config.file=/etc/prometheus/prometheus.yml'
-        - '--storage.tsdb.retention.time=1d' # Keep storage small for VM limits
-      ports:
-        - "9090:9090"
-      restart: always
+    image: prom/prometheus:v2.45.0
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=1d"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:10.0.0
-    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning
     ports:
       - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    restart: always   
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 volumes:
   postgres_data:
@@ -147,5 +148,5 @@ volumes:
   mlflow_artifacts:
   airflow_home:
   dvc_data:
-  prometheus_data: {}
-  grafana_data: {}
+  prometheus_data:
+  grafana_data:
