@@ -4,6 +4,7 @@ import io
 import mlflow
 import mlflow.sklearn
 import numpy as np
+import sklearn
 from PIL import Image
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
@@ -28,14 +29,16 @@ def load_data():
     """Read all images and labels from PostgreSQL in stable order."""
     from src.data.db import get_connection
 
+    X, y = [], []
     with get_connection() as conn:
-        with conn.cursor() as cur:
+        # A named cursor fetches the rows in small batches, so the
+        # images are never all in memory at the same time
+        with conn.cursor(name="training_images") as cur:
             cur.execute("SELECT image, label FROM images ORDER BY id")
-            rows = cur.fetchall()
-
-    X = np.array([preprocess(row["image"]) for row in rows])
-    y = np.array([row["label"] for row in rows])
-    return X, y
+            for row in cur:
+                X.append(preprocess(row["image"]))
+                y.append(row["label"])
+    return np.array(X), np.array(y)
 
 
 def train():
@@ -69,8 +72,12 @@ def train():
         })
         mlflow.log_metrics(metrics)
         mlflow.log_artifact(str(DVC_DIR / f"{SNAPSHOT}.dvc"))
+        # Give MLflow the package list ourselves. Otherwise it starts a
+        # second Python process that loads the whole model again, only
+        # to find this list (about 600 MB more with 13,400 images).
         model_info = mlflow.sklearn.log_model(
-            model, name="model", registered_model_name=MODEL_NAME
+            model, name="model", registered_model_name=MODEL_NAME,
+            pip_requirements=[f"scikit-learn=={sklearn.__version__}"],
         )
 
     comparison = promote_if_better(model_info.registered_model_version)
