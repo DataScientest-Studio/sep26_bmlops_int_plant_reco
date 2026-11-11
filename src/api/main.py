@@ -7,6 +7,10 @@ from src.data.etl import run_etl
 from src.features.build_features import image_features
 from src.models.predict import predict
 from src.models.training import train
+from src.monitoring.drift import (
+    check_image_drift,
+    check_prediction_drift,
+)
 
 app = FastAPI(title="Plant Reco API")
 
@@ -71,3 +75,15 @@ def predict_endpoint(file: UploadFile = File(...)):
     IMAGE_BRIGHTNESS.observe(features["brightness"])
     IMAGE_SHARPNESS.observe(features["sharpness"])
     return result
+
+
+@app.post("/drift/images")
+def drift_images_endpoint():
+    """Compare the newest images with the first load (Evidently)."""
+    return check_image_drift()
+
+
+@app.post("/drift/predictions")
+def drift_predictions_endpoint(n: int = 30):
+    """Compare the n latest predictions with the first load."""
+    return check_prediction_drift(n)
