@@ -3,6 +3,7 @@ import os
 
 import requests
 import streamlit as st
+from PIL import UnidentifiedImageError
 
 API_URL = os.getenv("API_URL", "http://api:8000")
 
@@ -41,7 +42,11 @@ image = st.file_uploader(
 )
 
 if image is not None:
-    st.image(image, width=256)
+    try:
+        st.image(image, width=256)
+    except UnidentifiedImageError:
+        st.error("This file is not a valid image.")
+        st.stop()
     if st.button("Predict"):
         try:
             result = predict(image)
