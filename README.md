@@ -1,5 +1,7 @@
 # Plant Reco — MLOps project
 
+[![CI](https://github.com/DataScientest-Studio/sep26_bmlops_int_plant_reco/actions/workflows/python-app.yml/badge.svg)](https://github.com/DataScientest-Studio/sep26_bmlops_int_plant_reco/actions/workflows/python-app.yml)
+
 Recognise the plant species and its disease from a photo of a leaf, and build everything
 around the model that makes it production-ready: data in a database, tracked and versioned
 models, Docker microservices, scheduled retraining, and monitoring with alerts and data
@@ -34,7 +36,7 @@ project is the MLOps around it.
 |---|---|---|
 | 1 · Foundations | database, training and prediction scripts, FastAPI | done (12 Oct) |
 | 2 · Microservices, tracking, versioning | PostgreSQL, Docker Compose, MLflow tracking and Model Registry, best-model promotion, ETL, Airflow, DVC | done (22 Oct) |
-| 3 · Monitoring and maintenance | Prometheus and Grafana alerts, predictions stored with image features, drift simulation, Evidently drift checks in Airflow with reports in MLflow, Streamlit app | done (11 Nov) |
+| 3 · Monitoring and maintenance | Prometheus metrics, Grafana dashboard and alerts, predictions stored with image features, drift simulation, Evidently drift checks in Airflow with reports in MLflow, retraining when drift is found, Streamlit app, CI with tests | done (12 Nov) |
 
 ## What it looks like
 
@@ -44,6 +46,10 @@ project is the MLOps around it.
 | **Streamlit**: upload a leaf photo, get the prediction from the API | **Grafana**: 30 dark test images fire the brightness and sharpness alerts |
 | ![Evidently report in MLflow](reports/figures/mlflow_drift_report.png) | ![Airflow training run](reports/figures/airflow_training_dag.png) |
 | **MLflow**: the Evidently report of a drift check | **Airflow**: ETL, image drift check, training |
+
+![Grafana dashboard](reports/figures/grafana_dashboard.png)
+**Grafana dashboard**: 30 dark images, then 30 normal ones. Brightness and sharpness leave their
+green bands and come back.
 
 ## Architecture
 
@@ -68,16 +74,16 @@ flowchart LR
 | `api` | own `Dockerfile` (Python 3.12) | 8000 | FastAPI: ETL, training, prediction, drift checks, Prometheus metrics |
 | `mlflow-db` | postgres:17 | internal | MLflow's runs, metrics and Model Registry |
 | `mlflow` | `docker/mlflow/Dockerfile` (MLflow 3.11.1) | 5000 | tracking server, Model Registry, model files and drift reports |
-| `airflow` | apache/airflow:3.1.8 (`standalone`) | 8080 | training pipeline (daily, 00:00 UTC) and monitoring pipeline (daily, 12:00 UTC) |
+| `airflow` | apache/airflow:3.1.8 (`standalone`) | 8080 | training pipeline (daily, 00:00 UTC) and monitoring pipeline (daily, 12:00 UTC; starts the training when drift is found) |
 | `streamlit` | `streamlit_app/Dockerfile` | 8501 | web app for predictions; talks only to the API |
 | `prometheus` | prom/prometheus:v2.45.0 | 9090 | collects the API's metrics every 15 seconds |
-| `grafana` | grafana/grafana:10.0.0 | 3000 | five alert rules on those metrics, provisioned from files |
+| `grafana` | grafana/grafana:10.0.0 | 3000 | a dashboard and five alert rules on those metrics, provisioned from files |
 
 ### Training pipeline (batch, scheduled by Airflow)
 
 ```mermaid
 flowchart LR
-    subgraph AF["Airflow · plant_reco_training · daily"]
+    subgraph AF["Airflow · plant_reco_training · daily, or after drift"]
         T1["etl"] --> T2["image_drift"] --> T3["train_evaluate"]
     end
     T1 -- "POST /etl" --> API["Model API · FastAPI"]
@@ -88,6 +94,9 @@ flowchart LR
     API -- "runs: model, metrics, data_md5, drift report" --> MLF["MLflow tracking"]
     MLF --> REG{{"Model Registry · plant_reco@production"}}
 ```
+
+Airflow starts this pipeline every day at 00:00 UTC, and the monitoring pipeline starts it
+when the latest predictions have drifted (see [Monitoring](#monitoring)).
 
 1. **ETL** (`src/data/etl.py`): takes the next 20 not yet used images per class from the
    ~50,500 images on disk and adds them to PostgreSQL. This simulates new incoming data.
@@ -131,8 +140,13 @@ The API publishes its metrics on `GET /metrics`:
 - `prediction_confidence`, `image_brightness` and `image_sharpness`: one value per
   prediction (histograms).
 
+The Grafana dashboard **Plant Reco – API and drift** shows these metrics live: API up or
+down, predictions in the last hour, share of 5xx errors, requests per second, average
+prediction time, and the average confidence, brightness and sharpness with their alert
+ranges drawn as green bands.
+
 Grafana evaluates five rules every minute; a rule fires when its condition has held for
-one minute. The rules and the Prometheus data source are files in
+one minute. The dashboard, the rules and the Prometheus data source are files in
 `docker/grafana/provisioning/`, so they exist on a fresh machine without any clicking.
 
 | Alert | Fires when | Catches |
@@ -155,6 +169,20 @@ Two checks compare the six image features with the **first load** of 3,800 image
 |---|---|---|
 | `POST /drift/images` | the newest batch added by the ETL | DAG `plant_reco_training`, task `image_drift` (daily, 00:00 UTC) |
 | `POST /drift/predictions?n=30` | the 30 latest predictions | DAG `plant_reco_monitoring`, task `prediction_drift` (daily, 12:00 UTC) |
+
+When the prediction check finds drift, the monitoring pipeline starts the training pipeline:
+
+```mermaid
+flowchart LR
+    subgraph AF["Airflow · plant_reco_monitoring · daily 12:00 UTC"]
+        M1["prediction_drift<br/>ShortCircuitOperator"] -- "drift found" --> M2["trigger_training<br/>TriggerDagRunOperator"]
+    end
+    M1 -- "POST /drift/predictions?n=30" --> API["Model API · FastAPI"]
+    M2 -- "starts" --> TR["plant_reco_training<br/>ETL, image check, training"]
+```
+
+`prediction_drift` returns True only if Evidently found drift; otherwise Airflow skips
+`trigger_training`. The new model still reaches production only if its macro-F1 is better.
 
 For each feature Evidently runs a Kolmogorov–Smirnov test. A feature has drifted if
 p < 0.001, and the check reports drift if at least one feature has drifted. We chose this
@@ -190,7 +218,7 @@ Measured on the VM with model v9 (11 Nov 2026):
 The confidence alone is a weak signal: it drops for dark and bright images but stays
 inside its range, and it moves only a little for blurred ones. The image features and the
 statistical test catch all three kinds of drift. A drift result is reported in Grafana and
-MLflow; retraining stays on its daily schedule.
+MLflow, and drift in the predictions starts a retraining (v11 below was started this way).
 
 ## Results
 
@@ -209,6 +237,12 @@ Each Airflow run adds data, retrains and promotes the model only if macro-F1 imp
 | – | 9,032 to 12,667 | – | 0.606 to 0.633 | no version: the training was killed while saving the model (out of memory) |
 | v9 | 14,071 | 0.6558 | 0.6313 | yes (11 Nov, after the memory fix) |
 | v10 | 14,731 | 0.6512 | 0.6291 | no (not better, 12 Nov) |
+| v11 | 15,391 | 0.6372 | 0.6150 | no (not better; started by the drift check, 12 Nov) |
+
+Since v9, macro-F1 has fallen slightly although there are more images. A likely reason: the
+ETL adds 20 images per class, but the smallest classes have run out of new images, so the
+class mix becomes more unbalanced and the small classes weigh more in macro-F1. The
+promotion rule keeps v9 in production.
 
 **What went wrong between 26 Oct and 10 Nov, and the fix.** From about 9,000 images on,
 every training logged its metrics and then died while saving the model: the Linux
@@ -273,6 +307,14 @@ curl -X POST "http://localhost:8000/drift/predictions?n=30"
 Or in Airflow: switch on the DAGs `plant_reco_training` and `plant_reco_monitoring`
 (new DAGs start paused) or start them with **Trigger**.
 
+Run the tests (they need no database and no MLflow server); GitHub Actions runs them,
+with flake8, on every push to `master`:
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest
+```
+
 ### API endpoints
 
 | Endpoint | What it does |
@@ -308,6 +350,9 @@ Or in Airflow: switch on the DAGs `plant_reco_training` and `plant_reco_monitori
 | Six simple image features as the drift input | cheap to compute for every prediction, stored with it, easy to explain |
 | Reference for drift = the first load of 3,800 images | a fixed, balanced historical sample (100 per class) |
 | K-S test with p < 0.001; one drifted feature is enough | Evidently's default raised false alarms for every window of 30 normal predictions |
+| Drift in the predictions starts the training DAG (`ShortCircuitOperator`, `TriggerDagRunOperator`) | an automatic reaction to drift that stays inside Airflow and needs no extra credentials; the promotion rule still decides |
+| Grafana dashboard as a provisioned file | the same live view on every machine, versioned in Git |
+| CI with GitHub Actions: Python 3.12, flake8, pytest | every push is checked; the tests run without a database or MLflow |
 
 ## Project structure
 
@@ -315,14 +360,15 @@ Or in Airflow: switch on the DAGs `plant_reco_training` and `plant_reco_monitori
 ├── docker-compose.yml               all nine services
 ├── Dockerfile                       image of api and loader
 ├── .env.example                     setting names with dummy values
+├── .github/workflows/python-app.yml CI: flake8 and pytest on every push
 ├── docker/
 │   ├── mlflow/Dockerfile            image of the MLflow server
 │   ├── prometheus/prometheus.yml    what Prometheus collects
-│   └── grafana/provisioning/        Grafana data source and alert rules
+│   └── grafana/provisioning/        Grafana data source, dashboard and alert rules
 ├── streamlit_app/                   Streamlit app and its Dockerfile
 ├── airflow/dags/
 │   ├── training_pipeline.py         DAG: etl → image_drift → train_evaluate, daily
-│   └── monitoring_pipeline.py       DAG: prediction_drift, daily
+│   └── monitoring_pipeline.py       DAG: prediction_drift → trigger_training, daily
 ├── src/
 │   ├── api/main.py                  FastAPI endpoints and Prometheus metrics
 │   ├── data/db.py                   PostgreSQL connection (DATABASE_URL)
@@ -337,6 +383,7 @@ Or in Airflow: switch on the DAGs `plant_reco_training` and `plant_reco_monitori
 │   ├── models/predict.py            prediction with the production model
 │   └── monitoring/drift.py          Evidently drift checks, logged in MLflow
 ├── reports/figures/                 screenshots for this README
+├── tests/test_api.py                tests: API, preprocessing, image features
 └── requirements.txt                 pinned Python libraries
 ```
 
